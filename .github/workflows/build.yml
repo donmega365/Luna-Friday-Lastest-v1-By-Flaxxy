@@ -16,16 +16,32 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.7'
-      - name: Unzip project
-        run: unzip -q luna.zip -d proj
+      - name: Find project (zip or plain files)
+        run: |
+          mkdir -p proj
+          if ls *.zip >/dev/null 2>&1; then
+            ZIP=$(ls -t *.zip | head -1)
+            echo "Using $ZIP"
+            unzip -q -o "$ZIP" -d proj
+          else
+            echo "No zip found, using repo files"
+            rsync -a --exclude proj --exclude .git ./ proj/
+          fi
+          ROOT=$(dirname "$(find proj -maxdepth 3 -name settings.gradle.kts | head -1)")
+          echo "Project root: $ROOT"
+          echo "ROOT=$ROOT" >> "$GITHUB_ENV"
       - name: Build
-        working-directory: proj
-        run: gradle assembleDebug --no-daemon
+        working-directory: ${{ env.ROOT }}
+        run: gradle :app:assembleDebug --no-daemon
+      - name: Collect APK
+        run: |
+          mkdir -p out
+          cp "$ROOT"/app/build/outputs/apk/debug/*.apk out/Luna.apk
       - uses: actions/upload-artifact@v6
         with:
           name: Luna-APK
-          path: proj/app/build/outputs/apk/debug/app-debug.apk
+          path: out/Luna.apk
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ github.run_number }}
-          files: proj/app/build/outputs/apk/debug/app-debug.apk
+          files: out/Luna.apk
